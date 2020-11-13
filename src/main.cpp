@@ -4,6 +4,7 @@
 
 #include <SFML/Graphics.hpp>
 
+// Embedded textures made with the xxd utility
 #include "player.hpp"
 #include "enemy.hpp"
 
