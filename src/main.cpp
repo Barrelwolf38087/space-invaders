@@ -48,12 +48,19 @@ class Application {
                                     _win.getView().getSize().y - _player.getGlobalBounds().height - bulletHeight);
     }
 
+    /**
+     * Handles all of the game logic
+     */
     void update() {
+
+        // Used to keep a consistent movement speed regardless of framerate
         static sf::Time elapsed;
-        static float playerPotentialX;
 
+        elapsed = _clock.getElapsedTime();
+        _clock.restart();
+
+        // Event handling
         static sf::Event e{};
-
         while (_win.pollEvent(e)) {
             switch (e.type) {
                 case Event::Closed:
@@ -63,6 +70,7 @@ class Application {
                     if (e.key.code == sf::Keyboard::Space && !_lost) {
                         sf::Time sinceLastFire{_fireCooldown.getElapsedTime()};
 
+                        // So the player can't just hold space to instantly win
                         if (sinceLastFire.asMilliseconds() > 100) {
                             _fireCooldown.restart();
                             fire();
@@ -73,9 +81,9 @@ class Application {
             }
         }
 
-        elapsed = _clock.getElapsedTime();
-        _clock.restart();
+        static float playerPotentialX;
 
+        // Polling input for player movement
         if (sf::Keyboard::isKeyPressed(sf::Keyboard::Left) || sf::Keyboard::isKeyPressed(sf::Keyboard::A)) {
             playerPotentialX = _player.getPosition().x - playerSpeed * elapsed.asSeconds();
             if (playerPotentialX < 0) {
@@ -90,10 +98,12 @@ class Application {
 
         _player.setPosition(playerPotentialX, _player.getPosition().y);
 
+        // Move the bullets up
         for (auto& bullet : _bullets) {
             bullet.setPosition(bullet.getPosition().x, bullet.getPosition().y - (elapsed.asSeconds() * bulletSpeed));
         }
 
+        // Clean up bullets that leave the screen
         for (size_t i = 0; i < _bullets.size(); ++i) {
             if (_bullets[i].getPosition().y < -bulletHeight) {
                 _bullets.erase(_bullets.begin() + i);
@@ -101,12 +111,14 @@ class Application {
             }
         }
 
+        // If a bullet hits an enemy, delete them both
         for (size_t i = 0; i < _enemies.size(); ++i) {
             for (size_t j = 0; j < _bullets.size(); ++j) {
                 if (_enemies[i].getGlobalBounds().intersects(_bullets[j].getGlobalBounds())) {
                     _enemies.erase(_enemies.begin() + i--);
                     _bullets.erase(_bullets.begin() + j--);
 
+                    // Check for win condition
                     if (_enemies.empty()) {
                         std::cout << "You win!" << std::endl;
                     }
@@ -114,21 +126,28 @@ class Application {
             }
         }
 
+        // Move all the enemies sideways
         bool shift;
         for (auto& enemy : _enemies) {
             enemy.setPosition(enemy.getPosition().x + (static_cast<float>(_enemyDirection) * enemySpeed * elapsed.asSeconds()),
                               enemy.getPosition().y);
 
-            if (enemy.getPosition().x < 0 || enemy.getPosition().x + enemy.getGlobalBounds().width > _win.getView().getSize().x) {
+            if (enemy.getPosition().x <= margin || enemy.getPosition().x + enemy.getGlobalBounds().width > _win.getView().getSize().x - margin) {
                 shift = true;
             }
         }
 
+        // If they moved over the margin, shift them down
         if (shift) {
+
+            // Reverse the direction
             _enemyDirection *= -1;
 
+            // Shift them down by the enemy height
             for (auto& enemy : _enemies) {
                 enemy.setPosition(enemy.getPosition().x, enemy.getPosition().y + enemy.getGlobalBounds().height);
+
+                // Check for lose condition
                 if (enemy.getPosition().y + enemy.getGlobalBounds().height > _win.getView().getSize().y && !_lost) {
                     std::cout << "You lose!" << std::endl;
                     _lost = true;
@@ -137,6 +156,7 @@ class Application {
         }
     }
 
+    // Draws everything after the game logic has been updated
     void render() {
         _win.clear();
         _win.draw(_player);
@@ -152,19 +172,18 @@ class Application {
         _win.display();
     }
 
-    static constexpr size_t getRow(size_t index) {
-        return index / 10;
-    }
-
 public:
     Application() :
             _win(sf::VideoMode(winWidth, winHeight), "Bad Space Invaders", sf::Style::Default | sf::Style::Resize) {
 
+        // Load the window icon from the header file
         _windowIcon.loadFromMemory(enemy_png, enemy_png_len);
         _win.setIcon(_windowIcon.getSize().x, _windowIcon.getSize().y, _windowIcon.getPixelsPtr());
+
+        // Prevents screen tearing
         _win.setVerticalSyncEnabled(true);
 
-//        _enemyTexture.loadFromMemory(enemy_png, enemy_png_len);
+        // Load the enemy and player textures from the header file
         _enemyTexture.loadFromImage(_windowIcon);
         _playerTexture.loadFromMemory(player_png, player_png_len);
 
@@ -172,6 +191,7 @@ public:
         _player.setScale(0.25, 0.25);
         _player.setPosition(0, _win.getView().getSize().y - _player.getGlobalBounds().height);
 
+        // Generate all the enemies
         _enemies.reserve(numEnemies);
         for (int i = 0; i < 40; ++i) {
             // Constructs the object in the vector instead of copying it, which is pretty neat
@@ -181,16 +201,23 @@ public:
             enemy.setTexture(_enemyTexture);
             enemy.setScale(0.5, 0.5);
 
-            int row = getRow(i);
+            // Integer division works to our advantage here
+            int row = i / 10;
 
-            // I know the casts are ugly, that's by design.
+            // I know the casts are ugly; that's considered best practice in C++ because casts can cause problems if
+            // you're not careful.
             enemy.setPosition(static_cast<float>(static_cast<float>(i % 10) * enemy.getGlobalBounds().width) + static_cast<float>((i % 10) * padding) + margin,
                               static_cast<float>(row) * enemy.getGlobalBounds().height + static_cast<float>(row * padding) + margin);
         }
 
     }
 
+    /**
+     * Initialize the game
+     */
     int run() {
+        // If we don't do this, the first call to getElapsedTime might return a bigger value than we expect, which could
+        // cause a stutter at the start.
         _clock.restart();
         _fireCooldown.restart();
 
